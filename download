@@ -1,0 +1,16 @@
+# Compiled class files
+*.class
+
+# Node.js (legacy)
+node_modules/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Environment
+.env
