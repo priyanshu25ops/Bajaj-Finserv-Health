@@ -1,7 +1,13 @@
+# Quiz Leaderboard System — Bajaj Finserv Health
 
+![Java 23](https://img.shields.io/badge/Java-23-orange.svg)
+![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-green.svg)
+![Build Passing](https://img.shields.io/badge/Build-Passing-brightgreen.svg)
+![Bajaj Finserv](https://img.shields.io/badge/Qualifier-SRM-blue.svg)
+
+A backend system that consumes quiz API responses from a distributed validator, handles duplicate event delivery, builds an accurate leaderboard, and submits the result — all in a single-file, zero-dependency Java application.
 
 ## 📋 Table of Contents
-
 - [Problem Statement](#-problem-statement)
 - [Architecture & Flow](#-architecture--flow)
 - [Deduplication Strategy](#-deduplication-strategy)
@@ -14,15 +20,12 @@
 ---
 
 ## 🧩 Problem Statement
-
 In distributed systems, API responses may be **delivered more than once**. This assignment simulates a real-world quiz show where participants receive scores across multiple rounds. The validator API serves this data across **10 sequential polls** — but the same event data can appear in multiple polls.
 
 ### Objective
-
 > Compute the **total score of all users combined** and generate a **correct leaderboard**, handling duplicate API response data correctly.
 
 ### Requirements Checklist
-
 | # | Requirement | Status |
 |---|-------------|--------|
 | 1 | Execute exactly 10 polls (`poll=0` to `poll=9`) | ✅ |
@@ -36,7 +39,6 @@ In distributed systems, API responses may be **delivered more than once**. This 
 ---
 
 ## 🏗 Architecture & Flow
-
 The system follows a **linear pipeline architecture** with distinct processing stages:
 
 ```text
@@ -47,48 +49,30 @@ The system follows a **linear pipeline architecture** with distinct processing s
       │                    │                     │                     │                    │
    5s delay          List<Event>           HashSet<Key>         Map<Name,Score>       JSON payload
   between polls       15 events             9 unique              3 users             1 submission
-````
+```
 
 ### Step-by-Step Breakdown
 
 **Step 1 — Polling**
-
-```java
-for (int poll = 0; poll < 10; poll++) {
-    String response = httpGet(BASE_URL + "/quiz/messages?regNo=" + REG_NO + "&poll=" + poll);
-    // ... collect events
-    Thread.sleep(5000); // mandatory 5-second delay
-}
-```
-
-The application makes **10 sequential HTTP GET requests** to the validator API, one for each poll index (`0–9`). A mandatory 5-second delay is enforced between requests to comply with rate-limiting requirements.
+The application makes 10 sequential HTTP GET requests to the validator API, one for each poll index (0–9). A mandatory 5-second delay is enforced between requests to comply with rate-limiting requirements.
 
 **Step 2 — Collection**
-
-All events from every poll response are accumulated into a single list. At this stage, duplicates are still present.
+All events from every poll response are accumulated into a single list. At this stage, duplicates are still present in the raw data.
 
 **Step 3 — Deduplication**
-
-Using a `HashSet` with composite keys (`roundId|participant`), the system filters out duplicate events. See the [Deduplication Strategy](#-deduplication-strategy) section for details.
+Using a `HashSet` with composite keys (`roundId|participant`), the system filters out duplicate events.
 
 **Step 4 — Aggregation**
-
-Scores are aggregated per participant using a `Map<String, Integer>` with `merge()`:
-
-```java
-scoreMap.merge(participant, score, Integer::sum);
-```
+Scores are aggregated per participant using a `Map<String, Integer>` with `merge()` or `put()`.
 
 **Step 5 — Sorting & Submission**
-
-The leaderboard is sorted in **descending order** by total score and submitted via a single `POST` request.
+The leaderboard is sorted in descending order by total score and submitted via a single `POST` request.
 
 ---
 
 ## 🔁 Deduplication Strategy
 
 ### The Problem
-
 In distributed systems, **at-least-once delivery** is common — the same message can arrive multiple times. If duplicates are processed, the final score will be inflated:
 
 ```text
@@ -102,101 +86,47 @@ Total = 360  ✗ WRONG                      Total = 120  ✓ CORRECT
 ```
 
 ### The Solution
-
 Each event is uniquely identified by the combination of **`roundId`** and **`participant`**. This composite key is used as a deduplication fingerprint:
 
 ```java
 Set<String> seen = new HashSet<>();
+String key = roundId + "|" + participant;
 
-for (Map<String, Object> event : allEvents) {
-    String key = event.get("roundId") + "|" + event.get("participant");
-
-    if (seen.add(key)) {          // returns true only if key is NEW
-        uniqueEvents.add(event);  // first occurrence → keep
-    }
-    // duplicate → automatically ignored
+if (seen.add(key)) {
+    // Process unique event...
 }
 ```
 
 ### Why This Works
-
-| Property             | Guarantee                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| **Uniqueness**       | `roundId + participant` uniquely identifies a scoring event                           |
-| **Idempotency**      | Processing the same event multiple times yields the same result as processing it once |
-| **O(1) Lookup**      | `HashSet.add()` provides constant-time duplicate detection                            |
-| **Order Preserving** | First occurrence is always kept, duplicates are discarded                             |
-
-### Dedup Results
-
-```text
-Raw events collected:    15
-Unique after dedup:       9
-Duplicates removed:       6
-```
+| Property | Guarantee |
+|---|---|
+| **Uniqueness** | `roundId + participant` uniquely identifies a scoring event |
+| **Idempotency** | Processing the same event multiple times yields the same result |
+| **O(1) Lookup** | `HashSet.add()` provides constant-time duplicate detection |
 
 ---
 
 ## 📡 API Reference
-
 **Base URL:** `https://devapigw.vidalhealthtpa.com/srm-quiz-task`
 
 ### `GET /quiz/messages`
-
-Fetches quiz events for a given poll index.
-
 **Query Parameters:**
-
-| Parameter | Type     | Required | Description                 |
-| --------- | -------- | -------- | --------------------------- |
-| `regNo`   | `string` | ✅        | Student registration number |
-| `poll`    | `int`    | ✅        | Poll index (`0–9`)          |
-
-**Response:**
-
-```json
-{
-  "regNo": "RA2311028010087",
-  "pollIndex": 0,
-  "totalPolls": 11,
-  "events": [
-    { "roundId": "R1", "participant": "Alice", "score": 120 },
-    { "roundId": "R1", "participant": "Bob", "score": 95 }
-  ],
-  "meta": {
-    "hint": "Rounds and scores may repeat across polls. Handle them correctly.",
-    "totalPollsRequired": 10
-  }
-}
-```
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `regNo` | `string` | ✅ | Student registration number |
+| `poll` | `int` | ✅ | Poll index (`0–9`) |
 
 ---
 
 ### `POST /quiz/submit`
-
-Submits the final leaderboard.
-
 **Request Body:**
-
 ```json
 {
   "regNo": "RA2311028010087",
   "leaderboard": [
     { "participant": "Bob", "totalScore": 295 },
-    { "participant": "Alice", "totalScore": 280 },
-    { "participant": "Charlie", "totalScore": 260 }
+    { "participant": "Alice", "totalScore": 280 }
   ]
-}
-```
-
-**Response:**
-
-```json
-{
-  "regNo": "RA2311028010087",
-  "totalPollsMade": 10,
-  "submittedTotal": 835,
-  "attemptCount": 1
 }
 ```
 
@@ -205,18 +135,11 @@ Submits the final leaderboard.
 ## 🚀 Getting Started
 
 ### Prerequisites
-
-* **Java JDK 11+** (tested with OpenJDK 23)
-
-> **Note:** This project uses **zero external dependencies** — only JDK built-in classes (`java.net.HttpURLConnection`, `java.util.*`). No Maven, Gradle, or third-party libraries required.
+* **Java JDK 11+** (Tested with OpenJDK 23)
+* **Zero external dependencies** — only JDK built-in classes (`java.net.http.*`, `java.util.*`) are used.
 
 ### Clone & Run
-
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/bajaj-quiz-leaderboard.git
-cd bajaj-quiz-leaderboard
-
 # Compile
 javac QuizLeaderboard.java
 
@@ -225,17 +148,14 @@ java QuizLeaderboard
 ```
 
 ### Configuration
-
-To use your own registration number, update the constant in `QuizLeaderboard.java`:
-
+Update the constant in `QuizLeaderboard.java`:
 ```java
-private static final String REG_NO = "RA2311028010087";  // ← your reg number
+private static final String REG_NO = "RA2311028010087"; 
 ```
 
 ---
 
 ## 🖥 Sample Execution
-
 ```text
 ═══════════════════════════════════════════════════════════
   Quiz Leaderboard System (Java)
@@ -243,24 +163,12 @@ private static final String REG_NO = "RA2311028010087";  // ← your reg number
 ═══════════════════════════════════════════════════════════
 
 [Poll 0] Fetching...
-[Poll 0] Received 2 events (pollIndex: 0)
-  ⏳ Waiting 5s before next poll...
+[Poll 0] Received 2 events
+   ⏳ Waiting 5s before next poll...
 
-[Poll 1] Fetching...
-[Poll 1] Received 1 events (pollIndex: 1)
-  ⏳ Waiting 5s before next poll...
-
-[Poll 2] Fetching...
-[Poll 2] Received 2 events (pollIndex: 2)
-  ⏳ Waiting 5s before next poll...
-
-  ... (polls 3–8 continue similarly) ...
-
-[Poll 9] Fetching...
-[Poll 9] Received 1 events (pollIndex: 9)
+... (polls 1–9) ...
 
 ── Total raw events collected: 15 ──
-
 ── Unique events after deduplication: 9 ──
 
 ── Leaderboard ──
@@ -269,89 +177,41 @@ private static final String REG_NO = "RA2311028010087";  // ← your reg number
 ├──────┼────────────────────┼────────────┤
 │    1 │ Bob                │        295 │
 │    2 │ Alice              │        280 │
-│    3 │ Charlie            │        260 │
 └──────┴────────────────────┴────────────┘
-
-  Total Score (all users): 835
-
-── Submitting leaderboard... ──
-
-── Submission Response ──
-{"regNo":"RA2311028010087","totalPollsMade":10,"submittedTotal":835,"attemptCount":1}
 
 📋 Submission recorded successfully.
 ```
 
-### Final Leaderboard
-
-| Rank | Participant     | Total Score |
-| :--: | --------------- | :---------: |
-|  🥇  | **Bob**         |   **295**   |
-|  🥈  | **Alice**       |   **280**   |
-|  🥉  | **Charlie**     |   **260**   |
-|      | **Grand Total** |   **835**   |
-
 ---
 
 ## 📁 Project Structure
-
 ```text
 bajaj-quiz-leaderboard/
 ├── QuizLeaderboard.java    # Single-file application — poll, dedup, aggregate, submit
 ├── README.md               # Documentation (this file)
-└── .gitignore              # Ignores .class files, IDE configs
+└── .gitignore              # Standard git configuration
 ```
-
-### Why Single-File?
-
-For a focused task like this, a single well-structured Java file:
-
-* Eliminates build-tool complexity (no Maven/Gradle setup)
-* Is immediately compilable with `javac` on any JDK 11+ system
-* Keeps the solution self-contained and easy to review
 
 ---
 
 ## 🛠 Tech Stack
-
-| Layer               | Technology                               | Purpose                             |
-| ------------------- | ---------------------------------------- | ----------------------------------- |
-| **Language**        | Java 23 (compatible with JDK 11+)        | Core application logic              |
-| **HTTP Client**     | `java.net.HttpURLConnection`             | REST API communication              |
-| **JSON Handling**   | Custom lightweight parser                | Zero-dependency JSON parsing        |
-| **Data Structures** | `HashSet`, `LinkedHashMap`, Java Streams | Deduplication, aggregation, sorting |
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Language** | Java 23 (JDK 11+) | Core application logic |
+| **HTTP Client** | `java.net.http.HttpClient` | REST API communication |
+| **JSON Handling** | Custom Regex Parser | Zero-dependency JSON parsing |
+| **Data Structures** | `HashSet`, `HashMap` | Deduplication and aggregation |
 
 ---
 
 ## 🔑 Key Design Decisions
-
-### 1. Zero External Dependencies
-
-The entire application uses only JDK built-in classes. This was a deliberate choice to demonstrate understanding of core Java networking and data structures without relying on frameworks like Spring Boot or libraries like Jackson/Gson.
-
-### 2. Custom JSON Parser
-
-Instead of pulling in a JSON library, a lightweight parser handles the specific response format. This keeps the project dependency-free while still correctly processing the API responses.
-
-### 3. HashSet-Based Deduplication
-
-Using `HashSet.add()` for deduplication provides **O(1)** amortized time complexity per lookup, making the dedup stage efficient even with large event volumes.
-
-### 4. Stream API for Leaderboard
-
-Java Streams provide a clean, functional approach to sorting and collecting the final leaderboard:
-
-```java
-List<Map.Entry<String, Integer>> leaderboard = scoreMap.entrySet().stream()
-    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-    .collect(Collectors.toList());
-```
+1. **Zero External Dependencies**: Demonstrates mastery of core Java APIs without relying on external libraries like Jackson or Gson.
+2. **Custom JSON Parser**: Uses lightweight regex to extract fields, ensuring the code remains portable and build-tool independent.
+3. **Modern Java Features**: Uses the `HttpClient` API (introduced in Java 11) for clean, asynchronous-capable network code.
 
 ---
-
 <p align="center">
   <b>Built for Bajaj Finserv Health — JAVA Qualifier — SRM</b>
   <br>
   <sub>April 2026</sub>
 </p>
-```
