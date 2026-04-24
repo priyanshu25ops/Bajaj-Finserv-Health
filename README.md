@@ -1,20 +1,4 @@
-````md
-# Quiz Leaderboard System — Bajaj Finserv Health
 
-<div>
-<p align="center">
-  <img src="https://img.shields.io/badge/Java-23-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 23">
-  <img src="https://img.shields.io/badge/Zero_Dependencies-✓-00C853?style=for-the-badge" alt="Zero Dependencies">
-  <img src="https://img.shields.io/badge/Build-Passing-brightgreen?style=for-the-badge" alt="Build Passing">
-  <img src="https://img.shields.io/badge/Bajaj_Finserv-Internship-0066CC?style=for-the-badge" alt="Bajaj Finserv">
-</p>
-</div>
-
-<p align="center">
-  A backend system that consumes quiz API responses from a distributed validator, handles <b>duplicate event delivery</b>, builds an accurate leaderboard, and submits the result — all in a single-file, zero-dependency Java application.
-</p>
-
----
 
 ## 📋 Table of Contents
 
